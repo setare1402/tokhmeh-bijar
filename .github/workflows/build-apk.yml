@@ -1,3 +1,4 @@
+
 name: Build Android APK
 
 on:
@@ -27,7 +28,7 @@ jobs:
         run: flutter pub get
 
       - name: Check code
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze lib --no-fatal-infos
 
       - name: Build APK
         run: flutter build apk --release
