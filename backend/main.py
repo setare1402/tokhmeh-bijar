@@ -1,10 +1,11 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Tokhmeh Bijar API",
     description="Backend API for Tokhmeh Bijar",
-    version="1.0.0",
+    version="1.0.0"
 )
 
 app.add_middleware(
@@ -17,13 +18,15 @@ app.add_middleware(
 
 
 @app.get("/")
-def root():
+def home():
     return {
         "message": "Tokhmeh Bijar API is running",
-        "status": "ok",
+        "status": "ok"
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy"
+    }
