@@ -275,25 +275,6 @@ class TokhmehBijarApp extends StatelessWidget {
         home: const HomePage(),
       );
 }
-  const TokhmehBijarApp({super.key});
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'تخمه بیجار',
-        theme: ThemeData(
-          useMaterial3: true,
-          scaffoldBackgroundColor: pageBg,
-          colorScheme: ColorScheme.fromSeed(seedColor: green),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: green,
-            foregroundColor: Colors.white,
-            centerTitle: true,
-          ),
-        ),
-        home: const HomePage(),
-      );
-}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
