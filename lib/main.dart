@@ -1,111 +1,234 @@
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const TokhmehBijarApp());
-}
+void main() => runApp(const TokhmehBijarApp());
 
 const Color green = Color(0xFF174D32);
 const Color gold = Color(0xFFFFD778);
-const Color background = Color(0xFFF8F6EF);
+const Color pageBg = Color(0xFFF8F6EF);
 const String adminPassword = '2468';
 
 class Product {
+  String id;
   String name;
   String category;
   String emoji;
+  String? imagePath;
   double price;
   bool available;
+  List<Product> children;
 
   Product({
+    required this.id,
     required this.name,
     required this.category,
-    required this.emoji,
+    this.emoji = '📦',
+    this.imagePath,
     this.price = 0,
     this.available = true,
-  });
+    List<Product>? children,
+  }) : children = children ?? [];
+
+  factory Product.fromJson(Map<String, dynamic> j) => Product(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        category: j['category'] as String? ?? 'سایر',
+        emoji: j['emoji'] as String? ?? '📦',
+        imagePath: j['imagePath'] as String?,
+        price: (j['price'] as num?)?.toDouble() ?? 0,
+        available: j['available'] as bool? ?? true,
+        children: ((j['children'] as List?) ?? [])
+            .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'category': category,
+        'emoji': emoji,
+        'imagePath': imagePath,
+        'price': price,
+        'available': available,
+        'children': children.map((e) => e.toJson()).toList(),
+      };
 }
 
-class CartItem {
-  final Product product;
-  final double weight;
+class StoreData {
+  static const _key = 'tokhmeh_bijar_products_v2';
 
-  CartItem(this.product, this.weight);
+  static List<Product> defaults() => [
+        Product(
+          id: 'sunflower',
+          name: 'تخمه آفتابگردان',
+          category: 'تخمه و دانه',
+          emoji: '🌻',
+          children: [
+            'ساده شور', 'نمکی', 'لیموئی', 'کچاپ', 'شکری', 'سس رنچ',
+            'پیاز جعفری', 'گلپر', 'گلپر لیمو', 'پنیری', 'خام'
+          ].asMap().entries.map((e) => Product(
+                id: 'sunflower_${e.key}',
+                name: e.value,
+                category: 'تخمه آفتابگردان',
+                emoji: '🌻',
+              )).toList(),
+        ),
+        Product(
+          id: 'pumpkin',
+          name: 'تخمه کدو',
+          category: 'تخمه و دانه',
+          emoji: '🎃',
+          children: ['ساده', 'نمکی', 'دو آتیشه', 'خام'].asMap().entries
+              .map((e) => Product(
+                    id: 'pumpkin_${e.key}',
+                    name: e.value,
+                    category: 'تخمه کدو',
+                    emoji: '🎃',
+                  )).toList(),
+        ),
+        Product(
+          id: 'pistachio',
+          name: 'پسته',
+          category: 'آجیل و خشکبار',
+          emoji: '🥜',
+          children: ['خام', 'زعفرانی', 'شور'].asMap().entries
+              .map((e) => Product(
+                    id: 'pistachio_${e.key}',
+                    name: e.value,
+                    category: 'پسته',
+                    emoji: '🥜',
+                  )).toList(),
+        ),
+        Product(
+          id: 'almond',
+          name: 'بادام',
+          category: 'آجیل و خشکبار',
+          emoji: '🌰',
+          children: ['درختی', 'زمینی', 'خام'].asMap().entries
+              .map((e) => Product(
+                    id: 'almond_${e.key}',
+                    name: e.value,
+                    category: 'بادام',
+                    emoji: '🌰',
+                  )).toList(),
+        ),
+        Product(
+          id: 'raisin',
+          name: 'کشمش',
+          category: 'آجیل و خشکبار',
+          emoji: '🍇',
+          children: ['پلویی', 'سبز', 'طلایی'].asMap().entries
+              .map((e) => Product(
+                    id: 'raisin_${e.key}',
+                    name: e.value,
+                    category: 'کشمش',
+                    emoji: '🍇',
+                  )).toList(),
+        ),
+        Product(
+          id: 'beans',
+          name: 'حبوبات',
+          category: 'حبوبات',
+          emoji: '🫘',
+          children: [
+            'لوبیا سفید', 'لوبیا قرمز', 'لوبیا چیتی', 'لوبیا چشم‌بلبلی',
+            'لوبیا محلی', 'ذرت', 'گندم', 'جو پوست‌کنده', 'جو پرک', 'عدس',
+            'لپه', 'گندم مرغی', 'ماش سبز', 'قره ماش', 'ارزن ریز', 'ارزن درشت'
+          ].asMap().entries.map((e) => Product(
+                id: 'beans_${e.key}',
+                name: e.value,
+                category: 'حبوبات',
+                emoji: '🫘',
+              )).toList(),
+        ),
+      ];
+
+  static Future<List<Product>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null) return defaults();
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return defaults();
+    }
+  }
+
+  static Future<void> save(List<Product> products) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _key,
+      jsonEncode(products.map((e) => e.toJson()).toList()),
+    );
+  }
 }
 
 class TokhmehBijarApp extends StatelessWidget {
   const TokhmehBijarApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'تخمه بیجار',
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: background,
-        colorScheme: ColorScheme.fromSeed(seedColor: green),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: green,
-          foregroundColor: Colors.white,
-          centerTitle: true,
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'تخمه بیجار',
+        theme: ThemeData(
+          useMaterial3: true,
+          scaffoldBackgroundColor: pageBg,
+          colorScheme: ColorScheme.fromSeed(seedColor: green),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: green,
+            foregroundColor: Colors.white,
+            centerTitle: true,
+          ),
         ),
-      ),
-      home: const HomePage(),
-    );
-  }
+        home: const HomePage(),
+      );
 }
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
-
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<Product> products = [
-    Product(name: 'تخمه آفتابگردان', category: 'تخمه و دانه', emoji: '🌻'),
-    Product(name: 'تخمه کدو', category: 'تخمه و دانه', emoji: '🎃'),
-    Product(name: 'پسته', category: 'آجیل و خشکبار', emoji: '🥜'),
-    Product(name: 'بادام', category: 'آجیل و خشکبار', emoji: '🌰'),
-    Product(name: 'کشمش', category: 'آجیل و خشکبار', emoji: '🍇'),
-    Product(name: 'حبوبات', category: 'حبوبات', emoji: '🫘'),
-  ];
+  List<Product> products = [];
+  bool loading = true;
+  final List<String> cart = [];
 
-  final List<CartItem> cart = [];
-  String selectedCategory = 'همه محصولات';
-
-  List<String> get categories {
-    final result = <String>['همه محصولات'];
-    for (final product in products) {
-      if (!result.contains(product.category)) {
-        result.add(product.category);
-      }
-    }
-    return result;
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  List<Product> get visibleProducts {
-    if (selectedCategory == 'همه محصولات') {
-      return products;
-    }
-    return products
-        .where((product) => product.category == selectedCategory)
-        .toList();
+  Future<void> _load() async {
+    products = await StoreData.load();
+    if (mounted) setState(() => loading = false);
   }
 
-  void openAdminLogin() {
-    final controller = TextEditingController();
+  Future<void> _save() async {
+    await StoreData.save(products);
+    if (mounted) setState(() {});
+  }
 
+  void _adminLogin() {
+    final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (dialogContext) => Directionality(
+      builder: (d) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('ورود مدیر'),
           content: TextField(
-            controller: controller,
+            controller: ctrl,
             obscureText: true,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
@@ -115,27 +238,25 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(d),
               child: const Text('انصراف'),
             ),
             FilledButton(
               onPressed: () {
-                if (controller.text == adminPassword) {
-                  Navigator.pop(dialogContext);
+                if (ctrl.text == adminPassword) {
+                  Navigator.pop(d);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => AdminPage(
                         products: products,
-                        onChanged: () => setState(() {}),
+                        onChanged: _save,
                       ),
                     ),
                   );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('رمز ورود اشتباه است'),
-                    ),
+                    const SnackBar(content: Text('رمز ورود اشتباه است')),
                   );
                 }
               },
@@ -147,488 +268,318 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void addToCart(Product product, double weight) {
-    if (!product.available) return;
-
-    setState(() {
-      cart.add(CartItem(product, weight));
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${product.name} به سبد اضافه شد')),
-    );
-  }
-
-  void showWeightDialog(Product product) {
-    double weight = 5;
-    final customController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text(product.name),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('وزن مورد نظر را انتخاب کنید'),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  children: [5, 10, 20].map((value) {
-                    return ChoiceChip(
-                      label: Text('$value کیلو'),
-                      selected: weight == value.toDouble(),
-                      onSelected: (_) {
-                        setDialogState(() {
-                          weight = value.toDouble();
-                          customController.clear();
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: customController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'وزن دلخواه به کیلوگرم',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    final parsed = double.tryParse(value);
-                    if (parsed != null && parsed > 0) {
-                      setDialogState(() => weight = parsed);
-                    }
-                  },
-                ),
-              ],
+  @override
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(
+            title: GestureDetector(
+              onLongPress: _adminLogin,
+              child: const Text('تخمه بیجار'),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('انصراف'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  if (weight <= 0) return;
-                  Navigator.pop(dialogContext);
-                  addToCart(product, weight);
-                },
-                child: const Text('افزودن به سبد'),
+              IconButton(
+                tooltip: 'ورود مدیر',
+                onPressed: _adminLogin,
+                icon: const Icon(Icons.admin_panel_settings_outlined),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  void showCart() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: StatefulBuilder(
-          builder: (context, setSheetState) {
-            final totalWeight = cart.fold<double>(
-              0,
-              (sum, item) => sum + item.weight,
-            );
-
-            return Padding(
-              padding: const EdgeInsets.all(18),
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+          body: loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
                   children: [
-                    const Text(
-                      'سبد خرید',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(22),
+                      decoration: const BoxDecoration(
+                        color: green,
+                        borderRadius:
+                            BorderRadius.vertical(bottom: Radius.circular(24)),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('به تخمه بیجار خوش آمدید',
+                              style: TextStyle(
+                                  color: gold,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold)),
+                          SizedBox(height: 6),
+                          Text('برای مشاهده محصولات، یک دسته را انتخاب کنید',
+                              style: TextStyle(color: Colors.white)),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    if (cart.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(20),
-                        child: Text('سبد خرید خالی است'),
-                      ),
-                    ...cart.asMap().entries.map((entry) {
-                      final item = entry.value;
-                      return ListTile(
-                        title: Text(item.product.name),
-                        subtitle: Text('${item.weight} کیلوگرم'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () {
-                            setState(() {
-                              cart.removeAt(entry.key);
-                            });
-                            setSheetState(() {});
-                          },
-                        ),
-                      );
-                    }),
-                    if (cart.isNotEmpty) ...[
-                      const Divider(),
-                      Text('مجموع وزن: $totalWeight کیلوگرم'),
-                      const Text('قیمت نهایی پس از استعلام اعلام می‌شود'),
-                    ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: cart.isEmpty
-                            ? null
-                            : () {
-                                Navigator.pop(sheetContext);
-                                ScaffoldMessenger.of(this.context)
-                                    .showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'ثبت سفارش آنلاین هنوز به سرور متصل نشده است',
+                    Expanded(
+                      child: products.isEmpty
+                          ? const Center(child: Text('محصولی برای نمایش وجود ندارد'))
+                          : GridView.builder(
+                              padding: const EdgeInsets.all(12),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                childAspectRatio: .82,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                              ),
+                              itemCount: products.length,
+                              itemBuilder: (context, i) {
+                                final p = products[i];
+                                return ProductCard(
+                                  product: p,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CustomerSubPage(product: p),
                                     ),
                                   ),
                                 );
                               },
-                        child: const Text('ادامه ثبت سفارش'),
-                      ),
+                            ),
                     ),
                   ],
                 ),
-              ),
-            );
-          },
         ),
-      ),
-    );
-  }
+      );
+}
+
+class ProductCard extends StatelessWidget {
+  final Product product;
+  final VoidCallback onTap;
+  const ProductCard({super.key, required this.product, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: Colors.white,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(child: ProductPicture(product: product)),
+                const SizedBox(height: 6),
+                Text(product.name,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(product.available ? 'موجود' : 'ناموجود',
+                    style: TextStyle(
+                        color: product.available ? green : Colors.red)),
+                const SizedBox(height: 6),
+                const Text('مشاهده زیرمجموعه‌ها',
+                    style: TextStyle(fontSize: 11, color: Colors.black54)),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class ProductPicture extends StatelessWidget {
+  final Product product;
+  const ProductPicture({super.key, required this.product});
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: GestureDetector(
-            onLongPress: openAdminLogin,
-            child: const Text(
-              'تخمه بیجار',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          actions: [
-            IconButton(
-              onPressed: showCart,
-              icon: Badge(
-                label: Text('${cart.length}'),
-                isLabelVisible: cart.isNotEmpty,
-                child: const Icon(Icons.shopping_cart_outlined),
-              ),
-            ),
-          ],
-        ),
-        drawer: Drawer(
-          child: ListView(
-            children: [
-              const DrawerHeader(
-                decoration: BoxDecoration(color: green),
-                child: Center(
-                  child: Text(
-                    '🌻 تخمه بیجار',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 25,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.store),
-                title: const Text('فروشگاه'),
-                onTap: () => Navigator.pop(context),
-              ),
-              ListTile(
-                leading: const Icon(Icons.shopping_bag_outlined),
-                title: const Text('سبد خرید'),
-                onTap: () {
-                  Navigator.pop(context);
-                  showCart();
-                },
-              ),
-              const ListTile(
-                leading: Icon(Icons.person_outline),
-                title: Text('حساب کاربری'),
-                subtitle: Text('پس از اتصال سرور فعال می‌شود'),
-              ),
-            ],
-          ),
-        ),
-        body: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(22),
-              decoration: const BoxDecoration(
-                color: green,
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(25),
-                ),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'به تخمه بیجار خوش آمدید',
-                    style: TextStyle(
-                      color: gold,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'خرید آسان محصولات باکیفیت',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              height: 65,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.all(10),
-                children: categories.map((category) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ChoiceChip(
-                      label: Text(category),
-                      selected: selectedCategory == category,
-                      selectedColor: gold,
-                      onSelected: (_) {
-                        setState(() => selectedCategory = category);
-                      },
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.all(12),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.82,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: visibleProducts.length,
-                itemBuilder: (context, index) {
-                  final product = visibleProducts[index];
-
-                  return Card(
-                    color: Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            product.emoji,
-                            style: const TextStyle(fontSize: 48),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            product.name,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                          Text(
-                            product.available ? 'موجود' : 'ناموجود',
-                            style: TextStyle(
-                              color: product.available ? green : Colors.red,
-                            ),
-                          ),
-                          Text(
-                            product.price > 0
-                                ? 'هر کیلو: ${product.price.toStringAsFixed(0)} تومان'
-                                : 'قیمت: استعلام',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          const Spacer(),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton(
-                              onPressed: product.available
-                                  ? () => showWeightDialog(product)
-                                  : null,
-                              child: Text(
-                                product.available
-                                    ? 'انتخاب وزن'
-                                    : 'ناموجود',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+    if (product.imagePath != null &&
+        File(product.imagePath!).existsSync()) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.file(File(product.imagePath!),
+            fit: BoxFit.cover, width: double.infinity),
+      );
+    }
+    return Center(
+      child: Text(product.emoji, style: const TextStyle(fontSize: 54)),
     );
   }
 }
 
+class CustomerSubPage extends StatelessWidget {
+  final Product product;
+  const CustomerSubPage({super.key, required this.product});
+
+  @override
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(title: Text(product.name)),
+          body: product.children.isEmpty
+              ? Center(
+                  child: Text(product.available
+                      ? '${product.name}\nقیمت هر کیلو: ${product.price.toStringAsFixed(0)} تومان'
+                      : 'این محصول ناموجود است',
+                      textAlign: TextAlign.center))
+              : GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: .82,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: product.children.length,
+                  itemBuilder: (context, i) {
+                    final child = product.children[i];
+                    return Card(
+                      color: Colors.white,
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
+                          children: [
+                            Expanded(child: ProductPicture(product: child)),
+                            Text(child.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                            Text(child.available ? 'موجود' : 'ناموجود',
+                                style: TextStyle(
+                                    color: child.available ? green : Colors.red)),
+                            Text(child.price > 0
+                                ? 'هر کیلو ${child.price.toStringAsFixed(0)} تومان'
+                                : 'قیمت: استعلام'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      );
+}
+
 class AdminPage extends StatefulWidget {
   final List<Product> products;
-  final VoidCallback onChanged;
-
-  const AdminPage({
-    super.key,
-    required this.products,
-    required this.onChanged,
-  });
+  final Future<void> Function() onChanged;
+  const AdminPage(
+      {super.key, required this.products, required this.onChanged});
 
   @override
   State<AdminPage> createState() => _AdminPageState();
 }
 
 class _AdminPageState extends State<AdminPage> {
-  void refresh() {
-    setState(() {});
-    widget.onChanged();
+  Future<void> _persist() async {
+    await widget.onChanged();
+    if (mounted) setState(() {});
   }
 
-  void editProduct([Product? product]) {
-    final nameController = TextEditingController(
-      text: product?.name ?? '',
+  Future<String?> _pickAndStoreImage() async {
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1600,
     );
-    final categoryController = TextEditingController(
-      text: product?.category ?? 'تخمه و دانه',
-    );
-    final emojiController = TextEditingController(
-      text: product?.emoji ?? '🌻',
-    );
-    final priceController = TextEditingController(
-      text: product == null || product.price == 0
-          ? ''
-          : product.price.toStringAsFixed(0),
-    );
+    if (picked == null) return null;
+    final dir = await getApplicationDocumentsDirectory();
+    final imagesDir = Directory('${dir.path}/product_images');
+    if (!await imagesDir.exists()) await imagesDir.create(recursive: true);
+    final ext = picked.name.contains('.') ? picked.name.split('.').last : 'jpg';
+    final target = '${imagesDir.path}/img_${DateTime.now().microsecondsSinceEpoch}.$ext';
+    return (await File(picked.path).copy(target)).path;
+  }
 
+  void _editProduct({Product? product, required List<Product> targetList,
+      String? defaultCategory}) {
+    final name = TextEditingController(text: product?.name ?? '');
+    final category = TextEditingController(
+        text: product?.category ?? defaultCategory ?? 'سایر');
+    final emoji = TextEditingController(text: product?.emoji ?? '📦');
+    final price = TextEditingController(
+        text: product == null || product.price == 0
+            ? ''
+            : product.price.toStringAsFixed(0));
     bool available = product?.available ?? true;
+    String? imagePath = product?.imagePath;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
+      builder: (d) => StatefulBuilder(
+        builder: (context, setDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: Text(
-              product == null ? 'افزودن محصول' : 'ویرایش محصول',
-            ),
+            title: Text(product == null ? 'افزودن محصول' : 'ویرایش محصول'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'نام محصول',
-                    ),
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                        color: pageBg,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: imagePath != null && File(imagePath!).existsSync()
+                        ? Image.file(File(imagePath!), fit: BoxFit.contain)
+                        : Text(emoji.text.isEmpty ? '📦' : emoji.text,
+                            style: const TextStyle(fontSize: 48)),
                   ),
-                  TextField(
-                    controller: categoryController,
-                    decoration: const InputDecoration(
-                      labelText: 'دسته‌بندی',
-                    ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final path = await _pickAndStoreImage();
+                      if (path != null) setDialog(() => imagePath = path);
+                    },
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('انتخاب عکس از گالری'),
                   ),
+                  TextField(controller: name,
+                      decoration: const InputDecoration(labelText: 'نام محصول')),
+                  TextField(controller: category,
+                      decoration: const InputDecoration(labelText: 'دسته‌بندی')),
+                  TextField(controller: emoji,
+                      decoration: const InputDecoration(labelText: 'آیکون / ایموجی')),
                   TextField(
-                    controller: emojiController,
-                    decoration: const InputDecoration(
-                      labelText: 'نشانه محصول',
-                    ),
-                  ),
-                  TextField(
-                    controller: priceController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'قیمت هر کیلو به تومان',
-                    ),
+                    controller: price,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'قیمت هر کیلو (تومان)'),
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('کالا موجود است'),
+                    title: const Text('محصول موجود است'),
                     value: available,
-                    onChanged: (value) {
-                      setDialogState(() => available = value);
-                    },
+                    onChanged: (v) => setDialog(() => available = v),
                   ),
                 ],
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('انصراف'),
-              ),
+              TextButton(onPressed: () => Navigator.pop(d),
+                  child: const Text('انصراف')),
               FilledButton(
-                onPressed: () {
-                  final name = nameController.text.trim();
-                  final category = categoryController.text.trim();
-                  final emoji = emojiController.text.trim();
-                  final price = double.tryParse(
-                        priceController.text.trim(),
-                      ) ??
-                      0;
-
-                  if (name.isEmpty || price < 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('نام و قیمت معتبر وارد کنید'),
-                      ),
-                    );
+                onPressed: () async {
+                  final parsedPrice = double.tryParse(price.text.trim()) ?? 0;
+                  if (name.text.trim().isEmpty || parsedPrice < 0) {
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      const SnackBar(content: Text('نام و قیمت معتبر وارد کنید')));
                     return;
                   }
-
                   if (product == null) {
-                    widget.products.add(
-                      Product(
-                        name: name,
-                        category: category.isEmpty ? 'سایر' : category,
-                        emoji: emoji.isEmpty ? '📦' : emoji,
-                        price: price,
-                        available: available,
-                      ),
-                    );
+                    targetList.add(Product(
+                      id: DateTime.now().microsecondsSinceEpoch.toString(),
+                      name: name.text.trim(),
+                      category: category.text.trim().isEmpty ? 'سایر' : category.text.trim(),
+                      emoji: emoji.text.trim().isEmpty ? '📦' : emoji.text.trim(),
+                      imagePath: imagePath,
+                      price: parsedPrice,
+                      available: available,
+                    ));
                   } else {
-                    product.name = name;
-                    product.category =
-                        category.isEmpty ? 'سایر' : category;
-                    product.emoji = emoji.isEmpty ? '📦' : emoji;
-                    product.price = price;
-                    product.available = available;
+                    product
+                      ..name = name.text.trim()
+                      ..category = category.text.trim().isEmpty ? 'سایر' : category.text.trim()
+                      ..emoji = emoji.text.trim().isEmpty ? '📦' : emoji.text.trim()
+                      ..imagePath = imagePath
+                      ..price = parsedPrice
+                      ..available = available;
                   }
-
-                  Navigator.pop(dialogContext);
-                  refresh();
+                  Navigator.pop(d);
+                  await _persist();
                 },
                 child: const Text('ذخیره'),
               ),
@@ -639,24 +590,22 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
-  void deleteProduct(Product product) {
+  void _delete(Product p, List<Product> list) {
     showDialog(
       context: context,
-      builder: (dialogContext) => Directionality(
+      builder: (d) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('حذف محصول'),
-          content: Text('آیا محصول «${product.name}» حذف شود؟'),
+          content: Text('«${p.name}» حذف شود؟'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('انصراف'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(d),
+                child: const Text('انصراف')),
             FilledButton(
-              onPressed: () {
-                widget.products.remove(product);
-                Navigator.pop(dialogContext);
-                refresh();
+              onPressed: () async {
+                list.remove(p);
+                Navigator.pop(d);
+                await _persist();
               },
               child: const Text('حذف'),
             ),
@@ -666,234 +615,156 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
-  void showInfoSection(
-    String title,
-    IconData icon,
-    String message,
-  ) {
+  void _openChildren(Product parent) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: Scaffold(
-            appBar: AppBar(title: Text(title)),
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 60, color: green),
-                    const SizedBox(height: 16),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(message, textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'این بخش هنوز به سرور و پایگاه داده متصل نشده است.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        builder: (_) => AdminSubPage(
+          parent: parent,
+          onChanged: _persist,
+          onAdd: () => _editProduct(
+              targetList: parent.children, defaultCategory: parent.name),
+          onEdit: (p) => _editProduct(product: p, targetList: parent.children),
+          onDelete: (p) => _delete(p, parent.children),
         ),
       ),
-    );
-  }
-
-  Widget sectionCard(
-    String title,
-    String subtitle,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon, color: green, size: 30),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: onTap,
-      ),
-    );
+    ).then((_) => _persist());
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('پنل مدیریت تخمه بیجار'),
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          backgroundColor: green,
-          foregroundColor: Colors.white,
-          onPressed: () => editProduct(),
-          icon: const Icon(Icons.add),
-          label: const Text('افزودن محصول'),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(14),
-          children: [
-            Card(
-              color: green,
-              child: const Padding(
-                padding: EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'خوش آمدید مدیر',
-                      style: TextStyle(
-                        color: gold,
-                        fontSize: 21,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'مدیریت فروشگاه تخمه بیجار',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(title: const Text('مدیریت محصولات و قیمت‌ها')),
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: green,
+            foregroundColor: Colors.white,
+            onPressed: () => _editProduct(targetList: widget.products),
+            icon: const Icon(Icons.add),
+            label: const Text('افزودن محصول'),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              const Card(
+                color: green,
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('فهرست محصولات\nبرای مدیریت عکس، قیمت، موجودی و زیرمجموعه‌ها، محصول را باز کنید.',
+                      style: TextStyle(color: Colors.white, height: 1.7)),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            sectionCard(
-              'مدیریت محصولات و قیمت‌ها',
-              'افزودن، ویرایش، حذف و تعیین موجودی کالا',
-              Icons.inventory_2,
-              () => showInfoSection(
-                'مدیریت محصولات',
-                Icons.inventory_2,
-                'فهرست محصولات در پایین همین صفحه قرار دارد.',
-              ),
-            ),
-            sectionCard(
-              'مدیریت سفارش‌ها',
-              'مشاهده و پیگیری سفارش‌های مشتریان',
-              Icons.receipt_long,
-              () => showInfoSection(
-                'مدیریت سفارش‌ها',
-                Icons.receipt_long,
-                'ثبت سفارش هنوز پیاده‌سازی نشده است.',
-              ),
-            ),
-            sectionCard(
-              'مدیریت مشتریان',
-              'اطلاعات و حساب مشتریان',
-              Icons.people,
-              () => showInfoSection(
-                'مدیریت مشتریان',
-                Icons.people,
-                'فهرست مشتریان پس از راه‌اندازی ورود فعال می‌شود.',
-              ),
-            ),
-            sectionCard(
-              'حسابداری',
-              'پرداخت‌ها، بدهی‌ها و مانده حساب',
-              Icons.account_balance_wallet,
-              () => showInfoSection(
-                'حسابداری',
-                Icons.account_balance_wallet,
-                'ثبت تراکنش و مانده حساب هنوز پیاده‌سازی نشده است.',
-              ),
-            ),
-            sectionCard(
-              'گفت‌وگو با مشتریان',
-              'پیام‌های خصوصی مشتریان',
-              Icons.chat,
-              () => showInfoSection(
-                'گفت‌وگو با مشتریان',
-                Icons.chat,
-                'گفت‌وگوی آنلاین هنوز پیاده‌سازی نشده است.',
-              ),
-            ),
-            sectionCard(
-              'مدیریت کارمندان',
-              'تعریف کارمند و سطح دسترسی',
-              Icons.badge,
-              () => showInfoSection(
-                'مدیریت کارمندان',
-                Icons.badge,
-                'تعریف حساب و سطح دسترسی هنوز پیاده‌سازی نشده است.',
-              ),
-            ),
-            const Divider(height: 28),
-            const Text(
-              'فهرست محصولات',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (widget.products.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('هنوز محصولی ثبت نشده است'),
-              ),
-            ...widget.products.map((product) {
-              return Card(
+              ...widget.products.map((p) => Card(
+                    color: Colors.white,
+                    child: ListTile(
+                      leading: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: ProductPicture(product: p),
+                      ),
+                      title: Text(p.name),
+                      subtitle: Text(
+                          '${p.available ? 'موجود' : 'ناموجود'} • ${p.children.length} زیرمجموعه'),
+                      trailing: const Icon(Icons.chevron_left),
+                      onTap: () => _openChildren(p),
+                      onLongPress: () => _editProduct(
+                          product: p, targetList: widget.products),
+                    ),
+                  )),
+              const SizedBox(height: 80),
+            ],
+          ),
+        ),
+      );
+}
+
+class AdminSubPage extends StatefulWidget {
+  final Product parent;
+  final Future<void> Function() onChanged;
+  final VoidCallback onAdd;
+  final void Function(Product) onEdit;
+  final void Function(Product) onDelete;
+
+  const AdminSubPage({
+    super.key,
+    required this.parent,
+    required this.onChanged,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  State<AdminSubPage> createState() => _AdminSubPageState();
+}
+
+class _AdminSubPageState extends State<AdminSubPage> {
+  @override
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(title: Text(widget.parent.name)),
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: green,
+            foregroundColor: Colors.white,
+            onPressed: widget.onAdd,
+            icon: const Icon(Icons.add),
+            label: const Text('افزودن زیرمحصول'),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              Card(
+                color: Colors.white,
                 child: ListTile(
-                  leading: Text(
-                    product.emoji,
-                    style: const TextStyle(fontSize: 28),
+                  leading: SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: ProductPicture(product: widget.parent),
                   ),
-                  title: Text(product.name),
-                  subtitle: Text(
-                    '${product.category} | '
-                    '${product.price.toStringAsFixed(0)} تومان | '
-                    '${product.available ? 'موجود' : 'ناموجود'}',
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        editProduct(product);
-                      } else if (value == 'delete') {
-                        deleteProduct(product);
-                      } else if (value == 'stock') {
-                        product.available = !product.available;
-                        refresh();
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Text('ویرایش و تغییر قیمت'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'stock',
-                        child: Text('تغییر موجودی'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Text('حذف محصول'),
-                      ),
-                    ],
-                  ),
+                  title: Text(widget.parent.name),
+                  subtitle: const Text('ویرایش محصول اصلی'),
+                  trailing: const Icon(Icons.edit),
+                  onTap: () => widget.onEdit(widget.parent),
                 ),
-              );
-            }),
-            const SizedBox(height: 80),
-          ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('زیرمجموعه‌ها',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              if (widget.parent.children.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('هنوز زیرمحصولی ثبت نشده است'),
+                ),
+              ...widget.parent.children.map((p) => Card(
+                    color: Colors.white,
+                    child: ListTile(
+                      leading: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: ProductPicture(product: p),
+                      ),
+                      title: Text(p.name),
+                      subtitle: Text(
+                          '${p.price.toStringAsFixed(0)} تومان • ${p.available ? 'موجود' : 'ناموجود'}'),
+                      onTap: () => widget.onEdit(p),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (v) {
+                          if (v == 'edit') widget.onEdit(p);
+                          if (v == 'delete') widget.onDelete(p);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'edit', child: Text('ویرایش')),
+                          PopupMenuItem(value: 'delete', child: Text('حذف')),
+                        ],
+                      ),
+                    ),
+                  )),
+              const SizedBox(height: 80),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
