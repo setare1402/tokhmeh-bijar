@@ -1,4 +1,3 @@
-
 name: tokhmeh_bijar
 description: اپلیکیشن فروش و مدیریت تخمه بیجار
 publish_to: 'none'
@@ -24,6 +23,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - file_00000000acbc821181d33376f504c9bb.png
 
 flutter_launcher_icons:
   android: true
