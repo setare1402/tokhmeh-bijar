@@ -249,6 +249,40 @@ class TokhmehBijarApp extends StatelessWidget {
         title: 'تخمه بیجار',
         theme: ThemeData(
           useMaterial3: true,
+          scaffoldBackgroundColor: Colors.transparent,
+          colorScheme: ColorScheme.fromSeed(seedColor: green),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: green,
+            foregroundColor: Colors.white,
+            centerTitle: true,
+          ),
+        ),
+        builder: (context, child) => Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'file_00000000acbc821181d33376f504c9bb.png',
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  Container(color: pageBg),
+            ),
+            Container(
+              color: const Color.fromRGBO(255, 255, 255, 0.78),
+            ),
+            child ?? const SizedBox.shrink(),
+          ],
+        ),
+        home: const HomePage(),
+      );
+}
+  const TokhmehBijarApp({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'تخمه بیجار',
+        theme: ThemeData(
+          useMaterial3: true,
           scaffoldBackgroundColor: pageBg,
           colorScheme: ColorScheme.fromSeed(seedColor: green),
           appBarTheme: const AppBarTheme(
