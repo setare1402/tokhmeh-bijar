@@ -65,16 +65,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final List<Product> products = [
-    Product(
-      name: 'تخمه آفتابگردان',
-      category: 'تخمه و دانه',
-      emoji: '🌻',
-    ),
-    Product(
-      name: 'تخمه کدو',
-      category: 'تخمه و دانه',
-      emoji: '🎃',
-    ),
+    Product(name: 'تخمه آفتابگردان', category: 'تخمه و دانه', emoji: '🌻'),
+    Product(name: 'تخمه کدو', category: 'تخمه و دانه', emoji: '🎃'),
     Product(name: 'پسته', category: 'آجیل و خشکبار', emoji: '🥜'),
     Product(name: 'بادام', category: 'آجیل و خشکبار', emoji: '🌰'),
     Product(name: 'کشمش', category: 'آجیل و خشکبار', emoji: '🍇'),
@@ -468,9 +460,7 @@ class _HomePageState extends State<HomePage> {
                           Text(
                             product.available ? 'موجود' : 'ناموجود',
                             style: TextStyle(
-                              color: product.available
-                                  ? green
-                                  : Colors.red,
+                              color: product.available ? green : Colors.red,
                             ),
                           ),
                           Text(
