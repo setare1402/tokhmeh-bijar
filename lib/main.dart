@@ -267,7 +267,7 @@ class TokhmehBijarApp extends StatelessWidget {
                   Container(color: pageBg),
             ),
             Container(
-              color: const Color.fromRGBO(255, 255, 255, 0.78),
+              color: const Color.fromRGBO(255, 255, 255, 0.38),
             ),
             child ?? const SizedBox.shrink(),
           ],
