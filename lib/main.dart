@@ -738,6 +738,7 @@ class CustomerSubPage extends StatelessWidget {
       );
 }
 
+// صفحه سبد خرید و محاسبه روش پرداخت
 class CartPage extends StatefulWidget {
   final List<CartEntry> cart;
   final VoidCallback onChanged;
@@ -753,12 +754,36 @@ class CartPage extends StatefulWidget {
 }
 
 class _CartPageState extends State<CartPage> {
+  String paymentMethod = 'نقدی';
+  int months = 1;
+
+  final List<String> paymentMethods = [
+    'نقدی',
+    'روزانه',
+    'هفتگی',
+    'فاکتور به فاکتور',
+    'ماهانه',
+    'چکی',
+  ];
+
+  String _money(double value) {
+    return value.toStringAsFixed(0);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final total = widget.cart.fold<double>(
+    final baseTotal = widget.cart.fold<double>(
       0,
       (sum, e) => sum + e.product.price * e.weight,
     );
+
+    final bool hasIncrease =
+        paymentMethod == 'ماهانه' || paymentMethod == 'چکی';
+
+    // افزایش هر ماه ۱۰ درصد از مبلغ اولیه است؛ حداکثر سه ماه.
+    final int increasePercent = hasIncrease ? months * 10 : 0;
+    final double extraAmount = baseTotal * increasePercent / 100;
+    final double finalTotal = baseTotal + extraAmount;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -796,16 +821,151 @@ class _CartPageState extends State<CartPage> {
                       },
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'جمع تقریبی: ${total.toStringAsFixed(0)} تومان',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+
+                  // انتخاب روش پرداخت
+                  Card(
+                    color: Colors.white,
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'روش پرداخت',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String>(
+                            value: paymentMethod,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                            items: paymentMethods.map((method) {
+                              return DropdownMenuItem<String>(
+                                value: method,
+                                child: Text(method),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setState(() {
+                                paymentMethod = value;
+                              });
+                            },
+                          ),
+
+                          // انتخاب تعداد ماه فقط برای ماهانه و چکی
+                          if (hasIncrease) ...[
+                            const SizedBox(height: 14),
+                            const Text(
+                              'مدت پرداخت',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<int>(
+                              value: months,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                              ),
+                              items: [1, 2, 3].map((month) {
+                                return DropdownMenuItem<int>(
+                                  value: month,
+                                  child: Text('$month ماه'),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  months = value;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'افزایش مبلغ: $increasePercent درصد',
+                              style: const TextStyle(
+                                color: green,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
+
+                  // نمایش مبلغ‌ها
+                  Card(
+                    color: Colors.white,
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('مبلغ اولیه:'),
+                              Text('${_money(baseTotal)} تومان'),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('مبلغ افزایش:'),
+                              Text(
+                                '${_money(extraAmount)} تومان',
+                                style: TextStyle(
+                                  color: extraAmount > 0
+                                      ? Colors.red
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'مبلغ نهایی:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17,
+                                ),
+                              ),
+                              Text(
+                                '${_money(finalTotal)} تومان',
+                                style: const TextStyle(
+                                  color: green,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: Text(
