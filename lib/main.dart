@@ -240,6 +240,91 @@ class LocalReviewStore {
   }
 }
 
+// اطلاعات سفارش مشتری
+class LocalOrder {
+  final String id;
+  final String customer;
+  final List<Map<String, dynamic>> items;
+  final String paymentMethod;
+  final int months;
+  final double baseTotal;
+  final int increasePercent;
+  final double extraAmount;
+  final double finalTotal;
+  final String date;
+  String status;
+
+  LocalOrder({
+    required this.id,
+    required this.customer,
+    required this.items,
+    required this.paymentMethod,
+    required this.months,
+    required this.baseTotal,
+    required this.increasePercent,
+    required this.extraAmount,
+    required this.finalTotal,
+    required this.date,
+    this.status = 'در انتظار بررسی',
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'customer': customer,
+        'items': items,
+        'paymentMethod': paymentMethod,
+        'months': months,
+        'baseTotal': baseTotal,
+        'increasePercent': increasePercent,
+        'extraAmount': extraAmount,
+        'finalTotal': finalTotal,
+        'date': date,
+        'status': status,
+      };
+
+  factory LocalOrder.fromJson(Map<String, dynamic> j) => LocalOrder(
+        id: j['id'] ?? '',
+        customer: j['customer'] ?? 'مشتری',
+        items: ((j['items'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList(),
+        paymentMethod: j['paymentMethod'] ?? 'نقدی',
+        months: (j['months'] as num?)?.toInt() ?? 1,
+        baseTotal: (j['baseTotal'] as num?)?.toDouble() ?? 0,
+        increasePercent: (j['increasePercent'] as num?)?.toInt() ?? 0,
+        extraAmount: (j['extraAmount'] as num?)?.toDouble() ?? 0,
+        finalTotal: (j['finalTotal'] as num?)?.toDouble() ?? 0,
+        date: j['date'] ?? '',
+        status: j['status'] ?? 'در انتظار بررسی',
+      );
+}
+
+class LocalOrderStore {
+  static const key = 'tokhmeh_bijar_local_orders_v1';
+
+  static Future<List<LocalOrder>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+
+    try {
+      return (jsonDecode(raw) as List)
+          .map((e) => LocalOrder.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> save(List<LocalOrder> orders) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      key,
+      jsonEncode(orders.map((e) => e.toJson()).toList()),
+    );
+  }
+}
+
 class TokhmehBijarApp extends StatelessWidget {
   const TokhmehBijarApp({super.key});
 
@@ -286,6 +371,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Product> products = [];
   List<LocalReview> reviews = [];
+  List<LocalOrder> orders = [];
   final List<CartEntry> cart = [];
   bool loading = true;
 
@@ -298,6 +384,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _load() async {
     products = await StoreData.load();
     reviews = await LocalReviewStore.load();
+    orders = await LocalOrderStore.load();
     if (mounted) setState(() => loading = false);
   }
 
@@ -308,6 +395,11 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _saveReviews() async {
     await LocalReviewStore.save(reviews);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveOrders() async {
+    await LocalOrderStore.save(orders);
     if (mounted) setState(() {});
   }
 
@@ -355,6 +447,8 @@ class _HomePageState extends State<HomePage> {
                         onChanged: _save,
                         reviews: reviews,
                         onReviewsChanged: _saveReviews,
+                        orders: orders,
+                        onOrdersChanged: _saveOrders,
                       ),
                     ),
                   );
@@ -392,6 +486,8 @@ class _HomePageState extends State<HomePage> {
                     builder: (_) => CartPage(
                       cart: cart,
                       onChanged: () => setState(() {}),
+                      orders: orders,
+                      onOrdersChanged: _saveOrders,
                     ),
                   ),
                 ),
@@ -738,15 +834,19 @@ class CustomerSubPage extends StatelessWidget {
       );
 }
 
-// صفحه سبد خرید و محاسبه روش پرداخت
+// صفحه سبد خرید و ثبت سفارش
 class CartPage extends StatefulWidget {
   final List<CartEntry> cart;
   final VoidCallback onChanged;
+  final List<LocalOrder> orders;
+  final Future<void> Function() onOrdersChanged;
 
   const CartPage({
     super.key,
     required this.cart,
     required this.onChanged,
+    required this.orders,
+    required this.onOrdersChanged,
   });
 
   @override
@@ -756,6 +856,7 @@ class CartPage extends StatefulWidget {
 class _CartPageState extends State<CartPage> {
   String paymentMethod = 'نقدی';
   int months = 1;
+  final TextEditingController customerName = TextEditingController();
 
   final List<String> paymentMethods = [
     'نقدی',
@@ -766,8 +867,80 @@ class _CartPageState extends State<CartPage> {
     'چکی',
   ];
 
-  String _money(double value) {
-    return value.toStringAsFixed(0);
+  String _money(double value) => value.toStringAsFixed(0);
+
+  Future<void> _registerOrder({
+    required double baseTotal,
+    required int increasePercent,
+    required double extraAmount,
+    required double finalTotal,
+  }) async {
+    if (customerName.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لطفاً نام مشتری را وارد کنید')),
+      );
+      return;
+    }
+
+    if (widget.cart.isEmpty) return;
+
+    final orderItems = widget.cart.map((e) {
+      return <String, dynamic>{
+        'name': e.product.name,
+        'weight': e.weight,
+        'price': e.product.price,
+        'total': e.product.price * e.weight,
+      };
+    }).toList();
+
+    final order = LocalOrder(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      customer: customerName.text.trim(),
+      items: orderItems,
+      paymentMethod: paymentMethod,
+      months: months,
+      baseTotal: baseTotal,
+      increasePercent: increasePercent,
+      extraAmount: extraAmount,
+      finalTotal: finalTotal,
+      date: DateTime.now().toLocal().toString().substring(0, 16),
+    );
+
+    widget.orders.insert(0, order);
+    await widget.onOrdersChanged();
+
+    widget.cart.clear();
+    widget.onChanged();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (d) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('سفارش ثبت شد'),
+          content: const Text(
+            'سفارش روی همین دستگاه ذخیره شد و در بخش مدیریت سفارش‌ها قابل مشاهده است.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(d);
+                Navigator.pop(context);
+              },
+              child: const Text('متوجه شدم'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    customerName.dispose();
+    super.dispose();
   }
 
   @override
@@ -863,7 +1036,6 @@ class _CartPageState extends State<CartPage> {
                             },
                           ),
 
-                          // انتخاب تعداد ماه فقط برای ماهانه و چکی
                           if (hasIncrease) ...[
                             const SizedBox(height: 14),
                             const Text(
@@ -910,7 +1082,7 @@ class _CartPageState extends State<CartPage> {
                     ),
                   ),
 
-                  // نمایش مبلغ‌ها
+                  // نمایش مبلغ‌ها و نام مشتری
                   Card(
                     color: Colors.white,
                     margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -961,16 +1133,40 @@ class _CartPageState extends State<CartPage> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: customerName,
+                            decoration: const InputDecoration(
+                              labelText: 'نام مشتری برای ثبت سفارش',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => _registerOrder(
+                                baseTotal: baseTotal,
+                                increasePercent: increasePercent,
+                                extraAmount: extraAmount,
+                                finalTotal: finalTotal,
+                              ),
+                              icon: const Icon(Icons.check_circle_outline),
+                              label: const Text('تأیید و ثبت سفارش'),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'نسخه آزمایشی: سفارش فقط روی همین گوشی ذخیره می‌شود.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontSize: 11,
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Text(
-                      'نسخه آزمایشی: ثبت سفارش و پرداخت هنوز فعال نیست.',
-                      style: TextStyle(color: Colors.black54),
                     ),
                   ),
                 ],
@@ -1026,6 +1222,13 @@ class _ReviewPageState extends State<ReviewPage> {
         const SnackBar(content: Text('نظر روی این دستگاه ذخیره شد')),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    name.dispose();
+    message.dispose();
+    super.dispose();
   }
 
   @override
@@ -1229,11 +1432,198 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
       );
 }
 
+// صفحه مدیریت سفارش‌ها
+class AdminOrdersPage extends StatefulWidget {
+  final List<LocalOrder> orders;
+  final Future<void> Function() onChanged;
+
+  const AdminOrdersPage({
+    super.key,
+    required this.orders,
+    required this.onChanged,
+  });
+
+  @override
+  State<AdminOrdersPage> createState() => _AdminOrdersPageState();
+}
+
+class _AdminOrdersPageState extends State<AdminOrdersPage> {
+  String _money(double value) => value.toStringAsFixed(0);
+
+  Color _statusColor(String status) {
+    if (status == 'تأیید شده') return green;
+    if (status == 'رد شده') return Colors.red;
+    return Colors.orange.shade800;
+  }
+
+  Future<void> _changeStatus(LocalOrder order, String status) async {
+    order.status = status;
+    await widget.onChanged();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          appBar: AppBar(title: const Text('مدیریت سفارش‌ها')),
+          body: widget.orders.isEmpty
+              ? const Center(
+                  child: Text('هنوز سفارشی ثبت نشده است'),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: widget.orders.length,
+                  itemBuilder: (context, i) {
+                    final order = widget.orders[i];
+
+                    return Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.receipt_long,
+                                  color: green,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'سفارش ${widget.orders.length - i}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 17,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  order.status,
+                                  style: TextStyle(
+                                    color: _statusColor(order.status),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Divider(height: 20),
+                            Text(
+                              'نام مشتری: ${order.customer}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text('تاریخ ثبت: ${order.date}'),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'اقلام سفارش:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            ...order.items.map((item) {
+                              final name = item['name'] ?? '';
+                              final weight =
+                                  (item['weight'] as num?)?.toDouble() ?? 0;
+                              final price =
+                                  (item['price'] as num?)?.toDouble() ?? 0;
+                              final total =
+                                  (item['total'] as num?)?.toDouble() ?? 0;
+
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 3,
+                                ),
+                                child: Text(
+                                  '$name — $weight کیلو • هر کیلو ${_money(price)} تومان • جمع ${_money(total)} تومان',
+                                ),
+                              );
+                            }),
+                            const Divider(height: 20),
+                            Text('روش پرداخت: ${order.paymentMethod}'),
+                            if (order.paymentMethod == 'ماهانه' ||
+                                order.paymentMethod == 'چکی')
+                              Text('مدت پرداخت: ${order.months} ماه'),
+                            Text('مبلغ اولیه: ${_money(order.baseTotal)} تومان'),
+                            Text(
+                              'درصد افزایش: ${order.increasePercent} درصد',
+                            ),
+                            Text(
+                              'مبلغ افزایش: ${_money(order.extraAmount)} تومان',
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'مبلغ نهایی: ${_money(order.finalTotal)} تومان',
+                              style: const TextStyle(
+                                color: green,
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Divider(height: 22),
+                            const Text(
+                              'تغییر وضعیت سفارش:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: () => _changeStatus(
+                                    order,
+                                    'در انتظار بررسی',
+                                  ),
+                                  child: const Text('در انتظار بررسی'),
+                                ),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: green,
+                                  ),
+                                  onPressed: () => _changeStatus(
+                                    order,
+                                    'تأیید شده',
+                                  ),
+                                  child: const Text('تأیید سفارش'),
+                                ),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                  ),
+                                  onPressed: () => _changeStatus(
+                                    order,
+                                    'رد شده',
+                                  ),
+                                  child: const Text('رد سفارش'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      );
+}
+
 class AdminPage extends StatefulWidget {
   final List<Product> products;
   final Future<void> Function() onChanged;
   final List<LocalReview> reviews;
   final Future<void> Function() onReviewsChanged;
+  final List<LocalOrder> orders;
+  final Future<void> Function() onOrdersChanged;
 
   const AdminPage({
     super.key,
@@ -1241,6 +1631,8 @@ class AdminPage extends StatefulWidget {
     required this.onChanged,
     required this.reviews,
     required this.onReviewsChanged,
+    required this.orders,
+    required this.onOrdersChanged,
   });
 
   @override
@@ -1538,6 +1930,33 @@ class _AdminPageState extends State<AdminPage> {
                     onLongPress: () => _editProduct(
                       product: p,
                       targetList: widget.products,
+                    ),
+                  ),
+                ),
+              ),
+              Card(
+                color: Colors.white,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.receipt_long,
+                    color: green,
+                    size: 30,
+                  ),
+                  title: const Text(
+                    'مدیریت سفارش‌ها',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    'تعداد سفارش‌های ثبت‌شده: ${widget.orders.length}',
+                  ),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AdminOrdersPage(
+                        orders: widget.orders,
+                        onChanged: widget.onOrdersChanged,
+                      ),
                     ),
                   ),
                 ),
